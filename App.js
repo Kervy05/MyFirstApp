@@ -1,8 +1,16 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, Alert, TouchableOpacity, Image, ScrollView, FlatList } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, Alert, TouchableOpacity, Image, FlatList, ImageBackground, ActivityIndicator } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
 
-export default function App() {
+const defaultImageUrl = 'https://randomuser.me/api/portraits/men/44.jpg';
+const loginBgImage = require('./assets/green.jpg');
+
+const Stack = createStackNavigator();
+
+function MainScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
@@ -23,15 +31,36 @@ export default function App() {
   // Track likes per post by user
   const [likedPosts, setLikedPosts] = useState({});
 
-  const handleLogin = () => {
-    if (username.length > 0 && password.length > 0) {
-      setLoggedIn(true);
-    } else {
-      Alert.alert('Login Failed', 'Please enter username and password.');
-    }
+  // Profile image state
+  const [profileImage, setProfileImage] = useState(null);
+
+  // Loading state
+  const [loading, setLoading] = useState(false);
+
+  // Password validation function
+  const isValidPassword = (pwd) => {
+    // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
+    const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    return regex.test(pwd);
   };
 
-  const handleLogout = () => {
+  const handleLogin = () => {
+    if (!isValidPassword(password)) {
+      Alert.alert(
+        'Invalid Password',
+        'Password must be at least 8 characters and include a number, an uppercase letter, and a lowercase letter.'
+      );
+      return;
+    }
+    setLoading(true);
+    // Simulate async login (replace with your real login logic)
+    setTimeout(() => {
+      setLoading(false);
+      setLoggedIn(true);
+    }, 1500);
+  };
+
+  const handleLogoutInternal = () => {
     setLoggedIn(false);
     setUsername('');
     setPassword('');  
@@ -49,39 +78,30 @@ export default function App() {
   };
 
   const handleNext = () => {
-    if (firstName.length > 0 && lastName.length > 0 && username.length > 0 && password.length > 0) {
-      Alert.alert('Sign Up Successful', `Welcome, ${firstName} ${lastName}!`);
-      setIsSignUp(false);
-      setLoggedIn(true);
+    if (
+      firstName.length > 0 &&
+      lastName.length > 0 &&
+      username.length > 0 &&
+      password.length > 0
+    ) {
+      if (!isValidPassword(password)) {
+        Alert.alert(
+          'Invalid Password',
+          'Password must be at least 8 characters and include a number, an uppercase letter, and a lowercase letter.'
+        );
+        return;
+      }
+      setLoading(true);
+      setTimeout(() => {
+        setLoading(false);
+        setIsSignUp(false);
+        setLoggedIn(true);
+      }, 1500);
     } else {
       Alert.alert('Sign Up Failed', 'Please fill in all fields.');
     }
   };
 
-  // Create post
-  const handleAddPost = () => {
-    if (newPost.trim().length > 0) {
-      setPosts([
-        {
-          id: Date.now().toString(),
-          user: {
-            name: firstName + ' ' + lastName,
-            username: username,
-            avatar: 'https://randomuser.me/api/portraits/men/44.jpg',
-          },
-          text: newPost,
-          likes: 0,
-          liked: false,
-          comments: [],
-          shares: 0,
-        },
-        ...posts,
-      ]);
-      setNewPost('');
-    } else {
-      Alert.alert('Post Failed', 'Please enter some text.');
-    }
-  };
 
   // Like/unlike
   const handleLike = (id) => {
@@ -124,53 +144,140 @@ export default function App() {
     setActiveCommentPostId(null);
   };
 
+  // Pick image from gallery
+  const handlePickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Permission required', 'Please allow access to your photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setProfileImage(result.assets[0].uri);
+    }
+  };
+
+  // Update all posts' avatars if the profile image changes
+  useEffect(() => {
+    if (loggedIn) {
+      setPosts(posts =>
+        posts.map(post =>
+          post.user.username === username
+            ? { ...post, user: { ...post.user, avatar: profileImage || defaultImageUrl } }
+            : post
+        )
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileImage]);
+
+  
+  const handleAddPost = () => {
+    if (newPost.trim().length > 0) {
+      setPosts([
+        {
+          id: Date.now().toString(),
+          user: {
+            name: username,
+            username: username,
+            avatar: profileImage || defaultImageUrl,
+          },
+          text: newPost,
+          likes: 0,
+          liked: false,
+          comments: [],
+          shares: 0,
+        },
+        ...posts,
+      ]);
+      setNewPost('');
+    } else {
+      Alert.alert('Post Failed', 'Please enter some text.');
+    }
+  };
+
+  // Show loading indicator overlay
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#4a90e2" />
+        <Text style={{ marginTop: 16, color: '#4a90e2', fontSize: 18 }}>Please wait...</Text>
+      </View>
+    );
+  }
+
   if (isSignUp) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.text}>Sign Up</Text>
-        <View style={styles.loginBox}>
-          <TextInput
-            style={styles.input}
-            placeholder="First Name"
-            value={firstName}
-            onChangeText={setFirstName}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Last Name"
-            value={lastName}
-            onChangeText={setLastName}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          <TouchableOpacity style={styles.loginButton} onPress={handleNext}>
-            <Text style={styles.loginButtonText}>Next</Text>
+      <ImageBackground source={loginBgImage} style={styles.bgImage}>
+        <View style={styles.containerTransparent}>
+          <Text style={styles.text}>Sign Up</Text>
+          <View style={styles.loginBox}>
+            <TextInput
+              style={styles.input}
+              placeholder="First Name"
+              value={firstName}
+              onChangeText={setFirstName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Last Name"
+              value={lastName}
+              onChangeText={setLastName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+            <TouchableOpacity style={styles.loginButton} onPress={handleNext}>
+              <Text style={styles.loginButtonText}>Next</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.signUpButton} onPress={() => setIsSignUp(false)}>
+            <Text style={styles.signUpButtonText}>Back to Login</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              marginTop: 18,
+              backgroundColor: '#fff',
+              borderRadius: 20,
+              paddingVertical: 5,
+              paddingHorizontal: 10,
+              borderWidth: 1,
+              borderColor: '#db4437',
+              alignSelf: 'center',
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+            onPress={() => Alert.alert('Gmail Sign Up', 'Gmail sign up tapped! (Integrate Google Sign-In here)')}
+          >
+            <Ionicons name="logo-google" size={22} color="#db4437" style={{ marginRight: 8 }} />
+            <Text style={{ color: '#db4437', fontWeight: 'bold', fontSize: 10 }}>Sign Up using Gmail</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.signUpButton} onPress={() => setIsSignUp(false)}>
-          <Text style={styles.signUpButtonText}>Back to Login</Text>
-        </TouchableOpacity>
-      </View>
+      </ImageBackground>
     );
   }
 
   if (loggedIn) {
     const userProfile = {
-      name: firstName || "Jane Doe",
-      username: username || "janedoe",
-      avatar: 'https://randomuser.me/api/portraits/men/44.jpg',
+      name: username,
+      username: username,
+      avatar: profileImage || defaultImageUrl, // uses default if none uploaded
     };
 
     return (
@@ -178,10 +285,23 @@ export default function App() {
         {/* Top Profile Bar */}
         <View style={styles.profileBar}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Image source={{ uri: userProfile.avatar }} style={styles.avatar} />
+            <TouchableOpacity onPress={handlePickImage}>
+              <Image
+                source={{ uri: userProfile.avatar }}
+                style={styles.avatar}
+              />
+              {!profileImage && (
+                <View style={styles.uploadPrompt}>
+                  <Ionicons name="camera" size={18} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
             <View style={{ marginLeft: 12 }}>
               <Text style={styles.profileName}>{userProfile.name}</Text>
               <Text style={styles.profileUsername}>@{userProfile.username}</Text>
+              {!profileImage && (
+                <Text style={styles.uploadText}>Tap photo to upload</Text>
+              )}
             </View>
           </View>
           <View style={styles.iconRow}>
@@ -190,6 +310,22 @@ export default function App() {
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.6} style={[styles.iconTouchable, { marginLeft: 16 }]}>
               <Ionicons name="notifications-outline" size={24} color="#4a90e2" />
+            </TouchableOpacity>
+            {/* Settings icon */}
+            <TouchableOpacity
+              activeOpacity={0.6}
+              style={[styles.iconTouchable, { marginLeft: 16 }]}
+              onPress={() => navigation.navigate('Settings')}
+            >
+              <Ionicons name="settings-outline" size={24} color="#4a90e2" />
+            </TouchableOpacity>
+            {/* Log out button as icon */}
+            <TouchableOpacity
+              activeOpacity={0.6}
+              style={[styles.iconTouchable, { marginLeft: 16 }]}
+              onPress={handleLogoutInternal}
+            >
+              <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
             </TouchableOpacity>
           </View>
         </View>
@@ -271,40 +407,145 @@ export default function App() {
         />
 
         {/* Log Out at left bottom corner */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Log Out</Text>
-        </TouchableOpacity>
+        
       </View>
     );
   }
 
   // Login screen
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>STATUS</Text>
-      <View style={styles.loginBox}>
-        <TextInput
-          style={styles.input}
-          placeholder="Username"
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
+    <ImageBackground source={loginBgImage} style={styles.bgImage}>
+      <View style={styles.containerTransparent}>
+        {/* Add Welcome image above STATUS */}
+        <Image
+          source={require('./assets/Welcomepage.png')}
+          style={{ width: 240, height: 400, alignSelf: 'center', marginTop: 0, marginBottom: -300 }}
+          resizeMode="contain"
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-          <Text style={styles.loginButtonText}>Log In</Text>
+        <Text style={styles.text}>STATUS</Text>
+        <View style={styles.loginBox}>
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+            <Text style={styles.loginButtonText}>Log In</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.signUpButton} onPress={handleSignUp}>
+          <Text style={styles.signUpButtonText}>Sign Up</Text>
+        </TouchableOpacity>
+        {/* Add this below Sign Up */}
+        <TouchableOpacity
+          style={{
+            marginTop: 18,
+            backgroundColor: '#fff',
+            borderRadius: 20,
+            paddingVertical: 5,
+            paddingHorizontal: 10,
+            borderWidth: 1,
+            borderColor: '#db4437',
+            alignSelf: 'center',
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+          onPress={() => Alert.alert('Gmail Login', 'Gmail login tapped! (Integrate Google Sign-In here)')}
+        >
+          <Ionicons name="logo-google" size={22} color="#db4437" style={{ marginRight: 10}} />
+          <Text style={{ color: '#db4437', fontWeight: 'bold', fontSize: 10}}>Log-In using Gmail</Text>
         </TouchableOpacity>
       </View>
-      <TouchableOpacity style={styles.signUpButton} onPress={handleSignUp}>
-        <Text style={styles.signUpButtonText}>Sign Up</Text>
+    </ImageBackground>
+  );
+}
+
+function SettingsScreen({ navigation, handleLogout }) {
+  const confirmLogout = () => {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes',
+          style: 'destructive',
+          onPress: () => {
+            handleLogout();
+            navigation.navigate('Main'); // Direct to login/first page
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#e74c3c',
+          borderRadius: 20,
+          paddingVertical: 12,
+          paddingHorizontal: 32,
+          marginBottom: 30,
+          elevation: 3,
+        }}
+        onPress={confirmLogout}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 18, letterSpacing: 1 }}>Log Out</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#4a90e2',
+          borderRadius: 20,
+          paddingVertical: 10,
+          paddingHorizontal: 28,
+        }}
+        onPress={() => navigation.goBack()}
+      >
+        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Back</Text>
       </TouchableOpacity>
     </View>
+  );
+}
+
+export default function App() {
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  const handleLogout = (navigation) => {
+    setLoggedIn(false);
+    // Optionally, navigate to login or reset state
+    if (navigation) navigation.navigate('Main');
+  };
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Main">
+          {props => (
+            <MainScreen {...props} handleLogout={handleLogout} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Settings">
+          {props => (
+            <SettingsScreen {...props} handleLogout={handleLogout} />
+          )}
+        </Stack.Screen>
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
@@ -321,11 +562,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     justifyContent: 'flex-start',
   },
+  containerTransparent: {
+    flex: 1,
+    backgroundColor: 'rgba(80, 78, 78, 0.28)', // semi-transparent overlay for readability
+    justifyContent: 'flex-start',
+  },
+  // status text
   text: {
     paddingTop: 200,
     marginBottom: 20,
     fontSize: 35,
-    color: '#333',
+    color: '#fff', // changed from '#333' to white
     fontFamily: 'serif',
     letterSpacing: 5, 
     alignSelf: 'center',
@@ -401,6 +648,8 @@ const styles = StyleSheet.create({
     borderRadius: 27,
     borderWidth: 2,
     borderColor: '#4a90e2',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   profileName: {
     fontSize: 18,
@@ -546,6 +795,25 @@ const styles = StyleSheet.create({
   iconTouchable: {
     padding: 10, // Increases tap area for easier tapping
     borderRadius: 20,
+  },
+  uploadPrompt: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#4a90e2',
+    borderRadius: 12,
+    padding: 3,
+  },
+  uploadText: {
+    color: '#e74c3c',
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  bgImage: {
+    flex: 1,
+    resizeMode: 'cover',
+    justifyContent: 'center',
   },
 });
 
